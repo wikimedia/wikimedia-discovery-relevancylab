@@ -31,12 +31,12 @@
 
 import argparse
 import difflib
-import getopt
 import json
 import os
 import re
 import sys
 from itertools import izip_longest
+
 
 def main():
     parser = argparse.ArgumentParser(description='line-by-line diff of JSON blobs',
@@ -59,17 +59,18 @@ def main():
             (aline, bline) = tuple
             aline = aline.strip(' \t\n')
             bline = bline.strip(' \t\n')
-            if aline == '': aline = '{}'
-            if bline == '': bline = '{}'
+            if aline == '':
+                aline = '{}'
+            if bline == '':
+                bline = '{}'
             diff_count += 1
-            diff_file = open(target_dir + 'diff' + `diff_count` + '.html', 'w')
+            diff_file = open(target_dir + 'diff' + repr(diff_count) + '.html', 'w')
 
             # remove searchmatch markup
             aline = re.sub(r'<span class=\\"searchmatch\\">(.*?)<\\/span>',
                            '\\1', aline)
             bline = re.sub(r'<span class=\\"searchmatch\\">(.*?)<\\/span>',
                            '\\1', bline)
-
 
             aline = json.dumps(json.loads(aline), sort_keys=True, indent=2)
             bline = json.dumps(json.loads(bline), sort_keys=True, indent=2)
