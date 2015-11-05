@@ -1,0 +1,86 @@
+#!/usr/bin/env python
+
+# jsondiff.py - an almost smart enough JSON diff tool
+#
+# This program does line-by-line diffs of two files with one JSON blob
+# per line, outputting one color-coded HTML diff per line into a target
+# directory. It performs a text diff on alphabetized, pretty printed
+# JSON. That's good enough for JSON blobs that have similar structure,
+# or dissimilar values (arrays of single digit numbers, for example, can
+# cause confusion, because one 7 looks like every other 7).
+#
+# A smarter (future) version would intelligently diff the structure of
+# the JSON, but the goal here was to put something reasonable together
+# as quickly as possible.
+#
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+# http://www.gnu.org/copyleft/gpl.html
+
+import argparse
+import difflib
+import getopt
+import json
+import os
+import re
+import sys
+from itertools import izip_longest
+
+def main():
+    parser = argparse.ArgumentParser(description='line-by-line diff of JSON blobs',
+                                     prog=sys.argv[0])
+    parser.add_argument('file', nargs=2, help='files to diff')
+    parser.add_argument('-d', '--dir', dest='dir', default='./diffs/',
+                        help='output directory, default is ./diffs/')
+    args = parser.parse_args()
+
+    (file1, file2) = args.file
+    target_dir = args.dir + '/'
+
+    diff_count = 0
+
+    if not os.path.exists(target_dir):
+        os.makedirs(os.path.dirname(target_dir))
+
+    with open(file1) as a, open(file2) as b:
+        for tuple in izip_longest(a, b, fillvalue='{}'):
+            (aline, bline) = tuple
+            aline = aline.strip(' \t\n')
+            bline = bline.strip(' \t\n')
+            if aline == '': aline = '{}'
+            if bline == '': bline = '{}'
+            diff_count += 1
+            diff_file = open(target_dir + 'diff' + `diff_count` + '.html', 'w')
+
+            # remove searchmatch markup
+            aline = re.sub(r'<span class=\\"searchmatch\\">(.*?)<\\/span>',
+                           '\\1', aline)
+            bline = re.sub(r'<span class=\\"searchmatch\\">(.*?)<\\/span>',
+                           '\\1', bline)
+
+
+            aline = json.dumps(json.loads(aline), sort_keys=True, indent=2)
+            bline = json.dumps(json.loads(bline), sort_keys=True, indent=2)
+            output = difflib.HtmlDiff(wrapcolumn=50).make_file(aline.split('\n'),
+                                                               bline.split('\n'),
+                                                               file1, file2)
+            # highlight key fields
+            output = re.sub(r'("(title|query|totalHits)":&nbsp;.*?)</td>',
+                            '<b><font color=#0000aa>\\1</font></b></td>', output)
+            diff_file.writelines(output)
+            diff_file.close()
+
+if __name__ == "__main__":
+    main()
