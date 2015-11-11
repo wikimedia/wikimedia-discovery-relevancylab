@@ -19,6 +19,7 @@ import sys
 import argparse
 import ConfigParser
 import pipes
+import shutil
 import subprocess
 import re
 
@@ -27,21 +28,26 @@ def getSafeName(name):
     return re.sub(r'[^a-zA-Z0-9]', '-', name)
 
 
-def ensureDir(dirname):
-    if not os.path.exists(dirname):
-        os.makedirs(dirname)
+def refreshDir(dirname):
+    # Delete the dir if it exists to clean out cruft from previous runs
+    if os.path.exists(dirname):
+        shutil.rmtree(dirname)
+    os.makedirs(dirname)
 
 
 def runSearch(config, section):
     qname = getSafeName(config.get(section, 'name'))
     qdir = config.get('settings', 'workDir') + "/queries/" + qname
-    ensureDir(qdir)
+    refreshDir(qdir)
     cmdline = config.get('settings', 'searchCommand')
     if config.has_option(section, 'config'):
         cmdline += " --options " + pipes.quote(open(config.get(section, 'config')).read())
+        shutil.copyfile(config.get(section, 'config'),
+                        qdir + '/config.json')  # archive search config
     runCommand("cat %s | ssh %s %s > %s" % (config.get(section, 'queries'),
                                             config.get('settings', 'labHost'),
                                             pipes.quote(cmdline), qdir + "/results"))
+    shutil.copyfile(config.get(section, 'queries'), qdir + '/queries')  # archive queries
     return qdir + "/results"
 
 
@@ -73,7 +79,8 @@ res2 = runSearch(config, 'test2')
 comparisonDir = "%s/comparisons/%s_%s" % (config.get('settings', 'workDir'),
                                           getSafeName(config.get('test1', 'name')),
                                           getSafeName(config.get('test2', 'name')))
-ensureDir(comparisonDir)
+refreshDir(comparisonDir)
+shutil.copyfile(args.config, comparisonDir + "/config.ini")  # archive comparison config
 
 runCommand("%s %s %s %s" % (config.get('settings', 'jsonDiffTool'),
                             comparisonDir + "/diffs", res1, res2))
