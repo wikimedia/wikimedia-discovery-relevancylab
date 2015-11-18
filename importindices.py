@@ -25,6 +25,7 @@
 import argparse
 import datetime
 import os
+import subprocess
 import sys
 import tempfile
 import urllib2
@@ -52,6 +53,31 @@ def check_index_exists(dest_host, wiki, index_type):
     urllib2.urlopen(request)
 
 
+def get_content_length(url):
+    request = urllib2.Request(url)
+    request.get_method = lambda: 'HEAD'
+    res = urllib2.urlopen(request)
+    return int(res.info().get('Content-Length'))
+
+
+def get_available_disk_space(path):
+    df = subprocess.Popen(["df", "-B1", path], stdout=subprocess.PIPE)
+    output = df.communicate()[0]
+    return int(output.split("\n")[1].split()[3])
+
+
+def check_disk_space(disk_needed, path):
+    disk_available = get_available_disk_space(path)
+    if disk_needed > disk_available:
+        raise RuntimeError("Not enough disk space. %d required but only %d available." %
+                           (disk_needed, disk_available))
+
+
+def build_dump_url(wiki, date, type):
+    return 'http://dumps.wikimedia.your.org/other/cirrussearch/%s/%s-%s-cirrussearch-%s.json.gz' % \
+        (date, wiki, date, type)
+
+
 def main():
     parser = argparse.ArgumentParser(description='import wikimedia elasticsearch dumps',
                                      prog=sys.argv[0])
@@ -61,24 +87,46 @@ def main():
                         help='type of index to import, either content or general')
     parser.add_argument('--date', dest='date', default=last_dump(),
                         help='date to load dump from')
-    parser.add_argument('--temp-dir', dest='temp_dir', default=None,
+    parser.add_argument('--temp-dir', dest='temp_dir', default='/tmp',
                         help='directory to download index into')
     parser.add_argument('wikis', nargs='+', help='list of wikis to import')
     args = parser.parse_args()
 
+    # Run some pre-checks that the import won't fail
     for wiki in args.wikis:
-        src_url = \
-            'http://dumps.wikimedia.org/other/cirrussearch/%s/%s-%s-cirrussearch-%s.json.gz' % \
-            (args.date, wiki, args.date, args.type)
+        src_url = build_dump_url(wiki, args.date, args.type)
+        dump_size = get_content_length(src_url)
+        check_disk_space(dump_size, args.temp_dir)
+        check_index_exists(args.dest, wiki, args.type)
+
+    completed = []
+    failed = []
+    for wiki in args.wikis:
+        src_url = build_dump_url(wiki, args.date, args.type)
+        dump_size = get_content_length(src_url)
+        try:
+            check_disk_space(dump_size, args.temp_dir)
+        except RuntimeError as e:
+            # can't do this wiki, but keep trying the rest
+            print('Cannot download for %s, skipping: %s' % (wiki, e))
+            failed.append(wiki)
+            continue
+
         fd, temp_path = tempfile.mkstemp(dir=args.temp_dir)
         print("Downloading ", src_url, " to ", temp_path)
-        os.system("curl -o %s %s" % (temp_path, src_url))
-        check_index_exists(args.dest, wiki, args.type)
+        subprocess.Popen("curl -o %s %s" % (temp_path, src_url), shell=True).wait()
         dest_url = "http://%s:9200/%s_%s/_bulk" % (args.dest, wiki, args.type)
         cmd = 'curl -s %s --data-binary @- > /dev/null' % (dest_url)
-        os.system("pv %s | zcat | parallel --pipe -L 100 -j3 '%s'" % (temp_path, cmd))
+        subprocess.Popen("pv %s | zcat | parallel --pipe -L 100 -j3 '%s'" %
+                         (temp_path, cmd), shell=True).wait()
         os.close(fd)
         os.remove(temp_path)
+        completed.append(wiki)
+
+    if len(completed) > 0:
+        print("Imported %d wikis: %s" % (len(completed), ', '.join(completed)))
+    if len(failed) > 0:
+        print("Not enough disk space to import %d wikis: %s" % (len(failed), ', '.join(failed)))
 
 if __name__ == "__main__":
     main()
