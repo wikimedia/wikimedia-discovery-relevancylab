@@ -67,7 +67,8 @@ def main():
     args = parser.parse_args()
 
     for wiki in args.wikis:
-        src_url = 'http://dumps.wikimedia.org/other/cirrussearch/%s/%s-%s-cirrussearch-%s.json.gz' % \
+        src_url = \
+            'http://dumps.wikimedia.org/other/cirrussearch/%s/%s-%s-cirrussearch-%s.json.gz' % \
             (args.date, wiki, args.date, args.type)
         fd, temp_path = tempfile.mkstemp(dir=args.temp_dir)
         print("Downloading ", src_url, " to ", temp_path)

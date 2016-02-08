@@ -13,6 +13,10 @@
 # the JSON, but the goal here was to put something reasonable together
 # as quickly as possible.
 #
+# It has a number of hacks specific to diffing JSON from CirrusSearch
+# results, including removing "searchmatch" markup and bolding elements
+# that are most important in comparing results, and numbering results.
+#
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -36,6 +40,15 @@ import os
 import re
 import sys
 from itertools import izip_longest
+
+
+def add_nums_to_results(results):
+    res_count = 1
+    if 'rows' in results:
+        for result in results['rows']:
+            result['relLabItemNumber'] = res_count
+            res_count += 1
+    return results
 
 
 def main():
@@ -72,13 +85,16 @@ def main():
             bline = re.sub(r'<span class=\\"searchmatch\\">(.*?)<\\/span>',
                            '\\1', bline)
 
-            aline = json.dumps(json.loads(aline), sort_keys=True, indent=2)
-            bline = json.dumps(json.loads(bline), sort_keys=True, indent=2)
-            output = difflib.HtmlDiff(wrapcolumn=50).make_file(aline.split('\n'),
-                                                               bline.split('\n'),
+            aresults = add_nums_to_results(json.loads(aline))
+            bresults = add_nums_to_results(json.loads(bline))
+
+            aline = json.dumps(aresults, sort_keys=True, indent=2)
+            bline = json.dumps(bresults, sort_keys=True, indent=2)
+            output = difflib.HtmlDiff(wrapcolumn=50).make_file(aline.splitlines(),
+                                                               bline.splitlines(),
                                                                file1, file2)
             # highlight key fields
-            output = re.sub(r'("(title|query|totalHits)":&nbsp;.*?)</td>',
+            output = re.sub(r'("(title|query|totalHits|relLabItemNumber)":&nbsp;.*?)</td>',
                             '<b><font color=#0000aa>\\1</font></b></td>', output)
             diff_file.writelines(output)
             diff_file.close()
