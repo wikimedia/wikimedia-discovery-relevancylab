@@ -40,6 +40,7 @@ import os
 import re
 import sys
 from itertools import izip_longest
+from jsonpath_rw import parse
 
 
 def add_nums_to_results(results):
@@ -49,6 +50,60 @@ def add_nums_to_results(results):
             result['relLabItemNumber'] = res_count
             res_count += 1
     return results
+
+
+def munge_explanation(results):
+    if 'rows' not in results:
+        return {}
+    for result in results['rows']:
+        if 'explanation' not in result:
+            continue
+        explanation = result['explanation']
+        del result['explanation']
+        result['|scores'] = {
+            '1.main': get_main_score(explanation),
+            '2.primary': get_primary_score(explanation),
+            '3.phrase': get_phrase_score(explanation),
+            '4.function': get_function_score(explanation)
+        }
+
+
+def get_main_score(exp):
+    return get_score_from_path(exp, parse('$.value'))
+
+
+def get_primary_score(exp):
+    primary = parse('$.details[0].value')
+    primary_with_phrase = parse('$.details[0].details[0].details[0].value')
+    if has_phrase_rescore(exp):
+        return get_score_from_path(exp, primary_with_phrase)
+    else:
+        return get_score_from_path(exp, primary)
+
+
+def get_phrase_score(exp):
+    phrase = parse('$.details[0].details[0].details[1].value')
+    if has_phrase_rescore(exp):
+        return get_score_from_path(exp, phrase)
+    else:
+        return "N/A"
+
+
+def get_function_score(exp):
+    function = parse('$.details[0].value')
+    return get_score_from_path(exp, function)
+
+
+def get_score_from_path(exp, path):
+    score = path.find(exp)
+    if len(score) > 0:
+        return score[0].value
+    return "N/A"
+
+
+def has_phrase_rescore(exp):
+    is_ph = parse('$.details[0].details[0].details[1].details[1].description').find(exp)
+    return len(is_ph) > 0 and is_ph[0].value == 'secondaryWeight'
 
 
 def main():
@@ -87,6 +142,10 @@ def main():
 
             aresults = add_nums_to_results(json.loads(aline))
             bresults = add_nums_to_results(json.loads(bline))
+
+            # munge lucene explanation
+            munge_explanation(aresults)
+            munge_explanation(bresults)
 
             aline = json.dumps(aresults, sort_keys=True, indent=2)
             bline = json.dumps(bresults, sort_keys=True, indent=2)
