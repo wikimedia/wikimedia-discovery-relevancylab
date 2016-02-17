@@ -104,20 +104,7 @@ class Metric(object):
         """Add example diff to b2d_diff (delta=False) or d2b_diff (delta=True)
         """
 
-        query_string = b_query = d_query = ""
-
-        if "query" in b:
-            b_query = b["query"]
-        if "query" in d:
-            d_query = d["query"]
-
-        if b_query == d_query:
-            query_string = b_query
-        else:
-            query_string = u"{} / {}".format(b_query, d_query)
-
-        if query_string == "":
-            query_string = "[no-query-string]"
+        query_string = make_query_string(b, d)
 
         if delta:
             self.d2b_diff.append([index, query_string])
@@ -148,13 +135,16 @@ class Metric(object):
             if self.raw_count:
                 ret_string += "<b>{}:</b> {}{}".format(self.name, count, diffstr)
             else:
+                q_pct = 100*count/float(self.total_queries) if self.total_queries else 0
                 ret_string += "<b>{}:</b> {:.1f}%{}".format(
-                    self.name, 100*count/float(self.total_queries), diffstr
+                    self.name, q_pct, diffstr
                     )
-            return ret_string + "<br>\n"
+            ret_string += "<br>\n"
+            return ret_string.encode('ascii', 'xmlcharrefreplace')
 
         elif self.printnum > 0:  # diff
-            ret_string = "<b>{}:</b><br>\n".format(self.name)
+            ret_string = "<b>{}:</b>\n".format(self.name)
+            ret_string += toggle_string()
             printed = 0
             if self.printset == "random":
                 # shuffle, unless all will be printed, then don't bother
@@ -181,7 +171,8 @@ class Metric(object):
                     printed += 1
                     if printed >= self.printnum:
                         break
-            return ret_string + "<br>\n"
+            ret_string += "</span>\n<br>\n"
+            return ret_string.encode('ascii', 'xmlcharrefreplace')
 
         return ""
 
@@ -196,9 +187,10 @@ class ZeroResultsRate(Metric):
 
     __metaclass__ = ABCMeta
 
-    def __init__(self):
+    def __init__(self, printnum=20):
         super(ZeroResultsRate, self).__init__("Zero Results",
-                                              symbols=["&darr;", "&uarr;"])
+                                              symbols=["&darr;", "&uarr;"],
+                                              printnum=printnum)
 
     def has_condition(self, x, y):
         """Simple check: is totalHits == 0?
@@ -215,12 +207,12 @@ class TopNDiff(Metric):
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, topN=5, sorted=False):
+    def __init__(self, topN=5, sorted=False, printnum=20):
         sortstr = "Sorted" if sorted else "Unsorted"
         self.sorted = sorted
         self.topN = topN
         super(TopNDiff, self).__init__("Top {} {} Results Differ".format(topN, sortstr),
-                                       symmetric=True)
+                                       symmetric=True, printnum=printnum)
 
     def has_condition(self, x, y):
         if "totalHits" in x:
@@ -263,21 +255,78 @@ class QueryCount(Metric):
         return not len(x) == 0
 
 
-def print_report(target_dir, diff_count, file1, file2, myMetrics):
+def make_query_string(x, y):
+        query_string = x_query = y_query = ""
+
+        if "query" in x:
+            x_query = x["query"]
+        if "query" in y:
+            y_query = y["query"]
+
+        if x_query == y_query:
+            query_string = x_query
+        else:
+            query_string = u"{} / {}".format(x_query, y_query)
+
+        if query_string == "":
+            query_string = "[no-query-string]"
+
+        return query_string
+
+
+def print_report(target_dir, diff_count, file1, file2, myMetrics, errors):
     report_file = open(target_dir + "report.html", "w")
     report_file.write(textwrap.dedent("""\
+        <script>
+        function toggle (button, span) {{
+            sp = document.getElementById(span);
+            if (sp.style.display == 'none' || sp.style.display == '') {{
+                button.innerHTML = '[ &ndash; ]';
+                sp.style.display = 'inline';
+                }}
+            else {{
+                button.innerHTML = '[ + ]';
+                sp.style.display = 'none';
+                }}
+            }}
+        </script>
+
+        <style>
+        .button {{cursor:pointer}}
+        .toggle {{display:none}}
+        </style>
+
         <h2>Comparison run summary: {}</h2>
         <blockquote>
         <b>Stats:</b> {} query pairs compared<br>
+        """).format(target_dir, diff_count))
+
+    if len(errors):
+        report_file.write("<br>\n<font color=red><b>QUERY PAIRS WITH ERRORS: " +
+                          "{}</b></font>\n".format(len(errors)))
+        report_file.write(toggle_string())
+        printed = 0
+        keylist = errors.keys()
+        shuffle(keylist)
+        for e in keylist:
+            report_file.write("&nbsp;&nbsp; <font color=red>ERROR</font> " +
+                              "<a href='diffs/diff{}.html'>{}</a><br>\n".
+                              format(e, errors[e].encode('ascii', 'xmlcharrefreplace')))
+            printed += 1
+            if printed >= 50:
+                break
+        report_file.write("</span>\n")
+
+    report_file.write(textwrap.dedent("""\
         </blockquote>
 
         <h3>Baseline: {}</h3>
         <blockquote>
         <b>Metrics:</b><br>
-        """).format(target_dir, diff_count, file1))
+        """).format(file1))
 
     for m in myMetrics:
-        report_file.write(m.results("baseline").encode('ascii', 'xmlcharrefreplace'))
+        report_file.write(m.results("baseline"))
 
     report_file.write(textwrap.dedent("""\
         </blockquote>
@@ -288,7 +337,7 @@ def print_report(target_dir, diff_count, file1, file2, myMetrics):
         """).format(file2))
 
     for m in myMetrics:
-        report_file.write(m.results("delta").encode('ascii', 'xmlcharrefreplace'))
+        report_file.write(m.results("delta"))
 
     report_file.write(textwrap.dedent("""\
         </blockquote>
@@ -298,9 +347,16 @@ def print_report(target_dir, diff_count, file1, file2, myMetrics):
         """))
 
     for m in myMetrics:
-        report_file.write(m.results().encode('ascii', 'xmlcharrefreplace'))
+        report_file.write(m.results())
 
     report_file.write("</blockquote>")
+
+
+def toggle_string():
+    toggle_string.num += 1
+    return("<span onclick='toggle(this,\"toggle{}\")' class=button>".format(toggle_string.num) +
+           "[ + ]</span><br>\n<span id=toggle{} class=toggle>\n".format(toggle_string.num))
+toggle_string.num = 0
 
 
 def main():
@@ -311,22 +367,29 @@ def main():
     parser.add_argument("file", nargs=2, help="files to diff")
     parser.add_argument("-d", "--dir", dest="dir", default="./comp/",
                         help="output directory, default is ./comp/")
+    parser.add_argument("-p", "--printnum", dest="printnum", default=20,
+                        help="number of samples per metric, default is 20")
     args = parser.parse_args()
 
     (file1, file2) = args.file
     target_dir = args.dir + "/"
+    printnum = int(args.printnum)
 
     if not os.path.exists(target_dir):
         os.makedirs(os.path.dirname(target_dir))
 
     diff_count = 0
+    errors = {}
 
     # set up metrics
+    # TODO: make this configurable from the .ini file
     myMetrics = [
         QueryCount(),
-        ZeroResultsRate(),
-        TopNDiff(5, sorted=False),
-        TopNDiff(5, sorted=True)
+        ZeroResultsRate(printnum=printnum),
+        TopNDiff(3, sorted=False, printnum=printnum),
+        TopNDiff(3, sorted=True, printnum=printnum),
+        TopNDiff(5, sorted=False, printnum=printnum),
+        TopNDiff(5, sorted=True, printnum=printnum)
         ]
 
     with open(file1) as a, open(file2) as b:
@@ -342,10 +405,15 @@ def main():
             bjson = json.loads(bline)
 
             diff_count += 1
+
+            if 'error' in ajson or 'error' in bjson:
+                errors[diff_count] = make_query_string(ajson, bjson)
+                continue
+
             for m in myMetrics:
                 m.measure(ajson, bjson, diff_count)
 
-    print_report(target_dir, diff_count, file1, file2, myMetrics)
+    print_report(target_dir, diff_count, file1, file2, myMetrics, errors)
 
 
 if __name__ == "__main__":

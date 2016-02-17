@@ -39,16 +39,24 @@ def runSearch(config, section):
     qname = getSafeName(config.get(section, 'name'))
     qdir = config.get('settings', 'workDir') + "/queries/" + qname
     refreshDir(qdir)
-    cmdline = config.get('settings', 'searchCommand')
+    cmdline = config.get(section, 'searchCommand')
     if config.has_option(section, 'config'):
         cmdline += " --options " + pipes.quote(open(config.get(section, 'config')).read())
         shutil.copyfile(config.get(section, 'config'),
                         qdir + '/config.json')  # archive search config
     runCommand("cat %s | ssh %s %s > %s" % (config.get(section, 'queries'),
-                                            config.get('settings', 'labHost'),
+                                            config.get(section, 'labHost'),
                                             pipes.quote(cmdline), qdir + "/results"))
     shutil.copyfile(config.get(section, 'queries'), qdir + '/queries')  # archive queries
     return qdir + "/results"
+
+
+def distributeGlobalSettings(config, globals, sections, settings):
+    # if settings are missing from sections, copy from globals
+    for sec in sections:
+        for set in settings:
+            if not config.has_option(sec, set) and config.has_option(globals, set):
+                config.set(sec, set, config.get(globals, set))
 
 
 def checkSettings(config, section, settings):
@@ -69,10 +77,11 @@ args = parser.parse_args()
 
 config = ConfigParser.ConfigParser()
 config.readfp(open(args.config))
-checkSettings(config, 'settings', ['labHost', 'workDir', 'jsonDiffTool',
-                                   'metricTool', 'searchCommand'])
-checkSettings(config, 'test1', ['name', 'queries'])
-checkSettings(config, 'test2', ['name', 'queries'])
+distributeGlobalSettings(config, 'settings', ['test1', 'test2'],
+                         ['queries', 'labHost', 'searchCommand', 'config'])
+checkSettings(config, 'settings', ['workDir', 'jsonDiffTool', 'metricTool'])
+checkSettings(config, 'test1', ['name', 'queries', 'labHost', 'searchCommand'])
+checkSettings(config, 'test2', ['name', 'queries', 'labHost', 'searchCommand'])
 
 res1 = runSearch(config, 'test1')
 res2 = runSearch(config, 'test2')

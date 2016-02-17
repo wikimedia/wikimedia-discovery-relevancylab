@@ -61,7 +61,6 @@ class CQueryParams:
     def __init__(self, args):
         self.limit = args.limit
         self.offset = args.offset
-        self.limit = args.limit
         self.functionWindow = args.functionWindow
         self.phraseWindow = args.phraseWindow
         self.rescoreProfile = args.rescoreProfile
