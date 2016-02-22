@@ -373,7 +373,7 @@ class CQExplain:
         self.children = list()
 
     def __cmp__(self, other):
-        return self.score - other.score
+        return cmp(self.score, other.score)
 
     def disp(self, display):
         return
@@ -613,7 +613,7 @@ class CQDisMaxExp(CQExplain):
         CQExplain.__init__(self, exp)
         for exp in exp['details']:
             self.children.append(CQExplain.build(exp))
-        self.winner = sorted(self.children)[0]
+        self.winner = sorted(self.children, reverse=True)[0]
 
     def disp(self, display):
         display.append('DisMax ')
