@@ -146,7 +146,7 @@ class CQPrinter:
 
 class CQExplainPrinter:
     """Display explain info"""
-    def __init__(self, printer=None, level=None):
+    def __init__(self, printer=None, level=None, args=None):
         if level is None:
             self.level = 0
         else:
@@ -156,6 +156,11 @@ class CQExplainPrinter:
             self.printer = printer
         else:
             self.printer = CQPrinter()
+
+        self.dismaxFilter = None
+        if args is not None:
+            if args.dismaxFilter is not None:
+                self.dismaxFilter = re.compile(args.dismaxFilter)
 
     def disp(self, exp, rankScore=None, maxScore=None):
         # we need rankScore because we want to flag
@@ -243,6 +248,8 @@ class CQExplainPrinter:
 
     def descend(self, exp):
         for child in exp.children:
+            if child.filtered(self):
+                continue
             self.level += 1
             self.disp(child)
             self.level -= 1
@@ -253,11 +260,11 @@ class CQExplainPrinter:
 
 class CQHitPrinter:
     """Display hit info"""
-    def __init__(self):
+    def __init__(self, args=None):
         self.level = 0
         self.indentChar = "  "
         self.printer = CQPrinter()
-        self.explain_printer = CQExplainPrinter(level=1)
+        self.explain_printer = CQExplainPrinter(level=1, args=args)
         self.snippet_pattern = re.compile('<span class="searchmatch">([^<]+)</span>')
 
     def indent(self, lvl=None):
@@ -302,11 +309,11 @@ class CQHitPrinter:
 
 
 class CQResultSetPrinter:
-    def __init__(self):
+    def __init__(self, args=None):
         self.level = 0
         self.indentChar = "  "
         self.printer = CQPrinter()
-        self.hitPrinter = CQHitPrinter()
+        self.hitPrinter = CQHitPrinter(args=args)
 
     def num(self, num):
         self.printer.w(num, 'white')
@@ -377,6 +384,9 @@ class CQExplain:
 
     def disp(self, display):
         return
+
+    def filtered(self, display):
+        return False
 
 
 class CQSingleRescoreExp(CQExplain):
@@ -684,6 +694,11 @@ class CQTermWeight(CQExplain):
         display.append(' fNorm=')
         display.score(self.norm)
 
+    def filtered(self, display):
+        if display.dismaxFilter is not None:
+            return not display.dismaxFilter.search(self.field)
+        return False
+
 
 class CQFilter(CQExplain):
     """Constant score node"""
@@ -804,6 +819,7 @@ aparser.add_argument('--allField', help='Use the all field (defaults: yes, use n
 aparser.add_argument('-fw', '--functionWindow', type=int, help='Function window size')
 aparser.add_argument('-pw', '--phraseWindow', type=int, help='Phrase window size')
 aparser.add_argument('-rp', '--rescoreProfile', help='Rescore profile')
+aparser.add_argument('-disf', '--dismaxFilter', help='Filter DisMax fields to display')
 aparser.add_argument('-c', '--custom', nargs='+', default=[],
                      help='List of custom param (-c param1=value1 param2=value2)')
 args = aparser.parse_args()
@@ -814,5 +830,5 @@ query = CQuery(args.query, args.wiki, params)
 
 
 res = query.run()
-printer = CQResultSetPrinter()
+printer = CQResultSetPrinter(args)
 printer.disp(res)
