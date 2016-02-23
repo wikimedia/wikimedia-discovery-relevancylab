@@ -314,6 +314,9 @@ class CQResultSetPrinter:
         self.indentChar = "  "
         self.printer = CQPrinter()
         self.hitPrinter = CQHitPrinter(args=args)
+        self.docFilter = re.compile('.*')
+        if args.docFilter is not None:
+            self.docFilter = re.compile(args.docFilter, re.IGNORECASE)
 
     def num(self, num):
         self.printer.w(num, 'white')
@@ -348,7 +351,8 @@ class CQResultSetPrinter:
         self.printer.nl()
 
         for h in results.hits:
-            self.hitPrinter.disp(h, maxScore=results.max_score)
+            if self.docFilter.search(h.title):
+                self.hitPrinter.disp(h, maxScore=results.max_score)
 
 
 class CQExplain:
@@ -820,6 +824,7 @@ aparser.add_argument('-fw', '--functionWindow', type=int, help='Function window 
 aparser.add_argument('-pw', '--phraseWindow', type=int, help='Phrase window size')
 aparser.add_argument('-rp', '--rescoreProfile', help='Rescore profile')
 aparser.add_argument('-disf', '--dismaxFilter', help='Filter DisMax fields to display')
+aparser.add_argument('-docf', '--docFilter', help='Filter docs to display')
 aparser.add_argument('-c', '--custom', nargs='+', default=[],
                      help='List of custom param (-c param1=value1 param2=value2)')
 args = aparser.parse_args()
