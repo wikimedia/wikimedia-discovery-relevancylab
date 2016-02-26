@@ -93,6 +93,26 @@ Note that `cqd.py` requires the `termcolor` package.
 
 Helpful hint: If you want to pipe the output of `cqd.py` through `less`, you will want to use `less`'s `-R` option, which makes it understand and preserve the color output from `cqd.py`, and you might want to use `less`'s `-S` option, which doesn't wrap lines (arrow left and right to see long lines), depending on which part of the output you are using most.
 
+### Index Metadata dump
+
+`metastats.py` is a command line too to export various metadata from cirrus indices. It works by reading dumps on http://dumps.wikimedia.org/other/cirrussearch
+
+Run `python metastats.py -w enwiki -t content -d 20160222 -u en.wikipedia.org > enwiki_meta_20160222.csv` to dump metadata for the enwiki content index.
+
+See `misc/comp_suggest_score.R` for more details on what you can do with this data.
+
+Columns:
+* page: The title
+* pageId: the page ID
+* incomingLinks: number of incoming links
+* externalLinks: number of external links
+* bytes: text size in bytes
+* headings: number of headings
+* redirects: number of redirects
+* outgoing: number of outgoing links
+* pop_score: popularity score based on pageviews (pageview/total project pageviews)
+* tmplBoost: product of all the template boosts
+
 ### Import Indices
 
 Import Indices (`importindices.py`) downloads elasticsearch indices from wikimedia dumps and imports them to an elasticsearch cluster. It lives with the Rel Lab but is used on the Elasticsearch server you connect to, not your local machine.
